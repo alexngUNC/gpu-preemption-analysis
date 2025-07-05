@@ -631,28 +631,67 @@ def percentile_labels(percentile):
   return f"{100-percentile:.3f}%", f"{percentile}%"
 
 
-def read_ivls(paths, single=False):
+def read_ivls(paths, single=False, us=True):
   import numpy as np
   if single:
     data, ivls = data_loader(singlePath=paths, single=True)
-    return  np.array(ivls) / 1000
+    if us:
+      return  np.array(ivls) / 1000
+    return np.array(ivls)
   ivls_array = []
   for path in paths:
     data, ivls = data_loader(singlePath=path, single=True)
     # Convert to microseconds
-    ivls = np.array(ivls) / 1000
+    ivls = np.array(ivls)
+    if us:
+      ivls = ivls / 1000
     ivls_array.append(ivls)
   return ivls_array
 
 
-
-def get_overhead(ivls, timeslice_length):
+def get_overhead(ivls, timeslice_length, convert2us=False, double=True):
   result = []
   for ivl in ivls:
-    result.append((ivl - timeslice_length) / 2)
-    result.append((ivl - timeslice_length) / 2)
+    oh = (ivl - timeslice_length) / 2
+    if convert2us:
+      oh /= 1000
+    result.append(oh)
+    if double:
+      result.append(oh)
   return result
- 
+
+
+def get_path_keys(paths):
+  import re
+  keys = []
+  for path in paths:
+    match = re.search(r'(\d+x\d+)', path)
+    if match:
+      keys.append(match.group(1))
+    else:
+      print(f"No match for path: {path}")
+  return keys
+    
+
+def get_oh_dir(dir, timeslice_length=2131, debug=True):
+  import os
+  import pandas as pd
+  ohs = {}
+  paths = []
+  for filename in os.listdir(dir):
+    file_path = os.path.join(dir, filename)
+    if os.path.isfile(file_path):
+      paths.append(file_path)
+  paths = sorted(paths)
+  keys = get_path_keys(paths)
+  for i in range(len(keys)):
+    if debug:
+      print(f"path: {paths[i]}\nkey: {keys[i]}")
+    ivls = read_ivls(paths=paths[i], single=True)
+    oh = get_overhead(ivls, timeslice_length=timeslice_length)
+    ohs[keys[i]] = oh
+  return pd.DataFrame(ohs)
+
 
 def cut_ivls(ivls, window):
   """
@@ -684,3 +723,55 @@ def plot_ivls_series(left_ivls, right_ivls, left_labels, right_labels, n,
                       firstLabel=left_labels[i], secondLabel=right_labels[i], 
                       NUM_SAMPLES=n, medianOffset=medianOffset, medianLines=medianLines,
                       lowerBound=lowerBound, upperBound=upperBound)
+
+
+def oh_over_time(oh, num_samples, lower=None, upper=None, title=None, alpha=None):
+  import matplotlib.pyplot as plt
+  plt.scatter(range(1, num_samples), oh, alpha=alpha)
+  plt.xlabel('Preemption #')
+  plt.ylabel('Overhead (us)')
+  if title is not None:
+    plt.title(title)
+  else:
+    plt.title('Preemption and Kernel Execution Intervals')
+
+  # Adjust the y-axis limits if desired
+  if lower is not None and upper is not None:
+    plt.ylim(lower, upper)
+  plt.show()
+
+
+def multi_boxplot(df, title, ymin=None, ymax=None, tick_step=1):
+  import matplotlib.pyplot as plt
+  import numpy as np
+  plt.figure(figsize=(15, 6))
+  df.boxplot(grid=False, 
+           patch_artist=True,
+           boxprops=dict(facecolor='none', color='gray'),
+           flierprops=dict(markerfacecolor='red', marker='o', markersize=5),
+           medianprops=dict(color='orange', linewidth=1),
+           capprops=dict(color='gray', linewidth=1),
+           whis=[0,100])
+  plt.title(title)
+  plt.xlabel('Register/Thread Configuration')
+  plt.ylabel('Context Switch Time (us)')
+
+	# y ticks
+  if ymin is None:
+    ymin = np.floor(df.min().min()) - 10
+  if ymax is None:
+    ymax = np.ceil(df.max().max()) + 10
+  plt.ylim(ymin, ymax)
+  plt.yticks(np.arange(ymin, ymax, tick_step))
+  LABEL_STEP = 5
+  plt.gca().set_yticks(np.arange(ymin, ymax, tick_step).tolist())
+  plt.gca().set_yticklabels(np.arange(ymin, ymax, tick_step).tolist())
+	# Show minor ticks (for tick marks every 1 unit)
+	#plt.gca().tick_params(axis='y', which='both', length=8, width=tick_step)
+	# Show minor ticks and adjust their appearance
+	#plt.gca().tick_params(axis='y', which='minor', length=4, width=tick_step)
+	# Add minor ticks at every unit
+	#plt.gca().minorticks_on()
+	# Disable minor ticks on the x-axis
+	#plt.gca().tick_params(axis='x', which='minor', length=0)
+  plt.show()
