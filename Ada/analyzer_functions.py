@@ -665,15 +665,15 @@ def get_path_keys(paths):
   import re
   keys = []
   for path in paths:
-    match = re.search(r'(\d+x\d+)', path)
-    if match:
-      keys.append(match.group(1))
+    parts = path.split('-')
+    if len(parts) >= 3:
+      keys.append(parts[2])
     else:
-      print(f"No match for path: {path}")
+      print(f"Incorrect file name format for path: {path}")
   return keys
     
 
-def get_oh_dir(dir, timeslice_length=2131, debug=True):
+def get_oh_dir(dir, timeslice_length=2131, debug=False):
   import os
   import pandas as pd
   ohs = {}
@@ -741,19 +741,49 @@ def oh_over_time(oh, num_samples, lower=None, upper=None, title=None, alpha=None
   plt.show()
 
 
-def multi_boxplot(df, title, ymin=None, ymax=None, tick_step=1):
-  import matplotlib.pyplot as plt
+def multi_boxplot(df, title, xlab, ymin=None, ymax=None, tick_step=1, whiskers=[0, 100], figsize=(15,6), save=None, minor_ticks=False):
+  import matplotlib
   import numpy as np
-  plt.figure(figsize=(15, 6))
+#   plt.rcParams.update({
+#     'font.size': 14,           # base font size
+#     'axes.titlesize': 16,      # title font size
+#     'axes.labelsize': 14,      # x and y labels
+#     'xtick.labelsize': 12,     # x tick labels
+#     'ytick.labelsize': 12,     # y tick labels
+#     'legend.fontsize': 12,
+#     'figure.titlesize': 16
+#   })
+  if save is not None:
+    matplotlib.use('pgf')
+    # IEEE-compatible PGF output
+    matplotlib.rcParams.update({
+      "pgf.texsystem": "pdflatex",
+      "text.usetex": True,
+      "font.family": "serif",
+      "font.size": 8,  # IEEE caption size
+      "axes.labelsize": 8,
+      "axes.titlesize": 8,
+      "legend.fontsize": 8,
+      "xtick.labelsize": 8,
+      "ytick.labelsize": 8,
+      "pgf.rcfonts": False,
+      "figure.dpi": 100  # doesn't matter for PGF
+    })
+  else:
+    matplotlib.use('module://matplotlib_inline.backend_inline')
+  import matplotlib.pyplot as plt
+  import matplotlib.ticker as ticker
+
+  plt.figure(figsize=figsize)
   df.boxplot(grid=False, 
            patch_artist=True,
            boxprops=dict(facecolor='none', color='gray'),
            flierprops=dict(markerfacecolor='red', marker='o', markersize=5),
            medianprops=dict(color='orange', linewidth=1),
            capprops=dict(color='gray', linewidth=1),
-           whis=[0,100])
+           whis=whiskers)
   plt.title(title)
-  plt.xlabel('Register/Thread Configuration')
+  plt.xlabel(xlab)
   plt.ylabel('Context Switch Time (us)')
 
 	# y ticks
@@ -766,12 +796,17 @@ def multi_boxplot(df, title, ymin=None, ymax=None, tick_step=1):
   LABEL_STEP = 5
   plt.gca().set_yticks(np.arange(ymin, ymax, tick_step).tolist())
   plt.gca().set_yticklabels(np.arange(ymin, ymax, tick_step).tolist())
-	# Show minor ticks (for tick marks every 1 unit)
-	#plt.gca().tick_params(axis='y', which='both', length=8, width=tick_step)
-	# Show minor ticks and adjust their appearance
-	#plt.gca().tick_params(axis='y', which='minor', length=4, width=tick_step)
-	# Add minor ticks at every unit
-	#plt.gca().minorticks_on()
-	# Disable minor ticks on the x-axis
-	#plt.gca().tick_params(axis='x', which='minor', length=0)
+  if minor_ticks:
+    ax = plt.gca()
+	# Minor ticks every 1 unit
+    ax.yaxis.set_minor_locator(ticker.MultipleLocator(1))
+
+    # Enable minor ticks and style both
+    ax.tick_params(axis='y', which='major', length=6, width=1)
+    ax.tick_params(axis='y', which='minor', length=3, width=1, labelsize=0)  # no labels
+
+    # Turn on minor ticks for y, off for x
+    ax.tick_params(axis='x', which='minor', length=0)
+  if save is not None:
+    plt.savefig(f"{save}.pgf", bbox_inches='tight')
   plt.show()
